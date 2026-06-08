@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Електронна Черга — Кіоск</title>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#060610; --surface:#0d0d1a; --border:#1a1a2e; --accent:#6ee7b7; --accent2:#f59e0b; --text:#f1f5f9; --muted:#475569; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:var(--bg); color:var(--text); font-family:'JetBrains Mono',monospace; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    body::before { content:''; position:fixed; inset:0; background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(110,231,183,.06) 0%, transparent 70%); pointer-events:none; }
+
+    .kiosk { position:relative; z-index:1; width:100%; max-width:520px; padding:24px; }
+    h1 { font-family:'Unbounded',sans-serif; font-size:22px; font-weight:900; color:var(--accent); text-align:center; margin-bottom:6px; }
+    .subtitle { text-align:center; color:var(--muted); font-size:12px; margin-bottom:32px; }
+
+    .services { display:flex; flex-direction:column; gap:10px; margin-bottom:24px; }
+    .service-btn {
+      background:var(--surface); border:1px solid var(--border); border-radius:10px;
+      padding:18px 20px; cursor:pointer; text-align:left; color:var(--text);
+      font-family:'JetBrains Mono',monospace; transition:all .2s;
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    .service-btn:hover { border-color:var(--accent); background:rgba(110,231,183,.06); transform:translateX(4px); }
+    .service-btn.selected { border-color:var(--accent); background:rgba(110,231,183,.1); }
+    .svc-name { font-size:15px; font-weight:600; }
+    .svc-desc { font-size:11px; color:var(--muted); margin-top:4px; }
+    .svc-time { font-size:11px; color:var(--accent); }
+
+    .priority-section { margin-bottom:20px; }
+    .priority-section label { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.07em; margin-bottom:10px; }
+    .priority-btns { display:flex; gap:8px; }
+    .prio-btn {
+      flex:1; padding:10px; border-radius:8px; border:1px solid var(--border);
+      background:transparent; color:var(--text); font-family:'JetBrains Mono',monospace;
+      font-size:11px; cursor:pointer; transition:all .15s; text-align:center;
+    }
+    .prio-btn.selected { border-color:var(--accent2); background:rgba(245,158,11,.1); color:var(--accent2); }
+
+    .name-input { width:100%; background:var(--surface); border:1px solid var(--border); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:13px; padding:10px 14px; border-radius:8px; outline:none; margin-bottom:20px; }
+    .name-input:focus { border-color:var(--accent); }
+
+    .get-btn {
+      width:100%; padding:16px; background:var(--accent); color:#000; border:none;
+      border-radius:10px; font-family:'Unbounded',sans-serif; font-size:15px; font-weight:700;
+      cursor:pointer; transition:all .2s; letter-spacing:.03em;
+    }
+    .get-btn:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(110,231,183,.3); }
+    .get-btn:disabled { opacity:.4; cursor:not-allowed; transform:none; box-shadow:none; }
+
+    /* Result */
+    .result { display:none; text-align:center; animation:pop .4s cubic-bezier(.34,1.56,.64,1); }
+    @keyframes pop { from { opacity:0; transform:scale(.8); } to { opacity:1; transform:scale(1); } }
+    .ticket-card { background:var(--surface); border:2px solid var(--accent); border-radius:16px; padding:32px; margin-bottom:20px; }
+    .ticket-label { font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); }
+    .ticket-number { font-family:'Unbounded',sans-serif; font-size:72px; font-weight:900; color:var(--accent); line-height:1; margin:8px 0; }
+    .ticket-service { font-size:14px; color:var(--text); margin-bottom:16px; }
+    .ticket-meta { display:grid; grid-template-columns:1fr 1fr; gap:12px; text-align:left; }
+    .meta-item { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+    .meta-val { font-size:18px; font-weight:700; color:var(--accent2); }
+    .meta-key { font-size:10px; color:var(--muted); margin-top:2px; text-transform:uppercase; }
+    .back-btn { background:transparent; border:1px solid var(--border); color:var(--muted); padding:10px 20px; border-radius:8px; cursor:pointer; font-family:'JetBrains Mono',monospace; font-size:12px; }
+    .back-btn:hover { border-color:var(--text); color:var(--text); }
+  </style>
+</head>
+<body>
+<div class="kiosk">
+  <div id="form-screen">
+    <h1>Електронна Черга</h1>
+    <p class="subtitle">Оберіть послугу та отримайте талон</p>
+
+    <div class="services" id="services-list">
+      {% for s in services %}
+      <button class="service-btn" onclick="selectService('{{ s.service_id }}', this)">
+        <div>
+          <div class="svc-name">{{ s.name }}</div>
+          <div class="svc-desc">{{ s.description or 'Стандартна послуга' }}</div>
+        </div>
+        <div class="svc-time">~{{ s.avg_duration_minutes|int }} хв</div>
+      </button>
+      {% endfor %}
+    </div>
+
+    <div class="priority-section">
+      <label>Пріоритет</label>
+      <div class="priority-btns">
+        <button class="prio-btn selected" onclick="selectPriority(1, this)">Звичайний</button>
+        <button class="prio-btn" onclick="selectPriority(2, this)">Пріоритет</button>
+        <button class="prio-btn" onclick="selectPriority(3, this)">VIP</button>
+      </div>
+    </div>
+
+    <input class="name-input" id="cust-name" type="text" placeholder="Ваше ім'я (необов'язково)">
+
+    <button class="get-btn" id="get-btn" onclick="getTicket()" disabled>Отримати талон</button>
+  </div>
+
+  <div class="result" id="result-screen">
+    <div class="ticket-card">
+      <div class="ticket-label">Ваш талон</div>
+      <div class="ticket-number" id="r-number">—</div>
+      <div class="ticket-service" id="r-service"></div>
+      <div class="ticket-meta">
+        <div class="meta-item"><div class="meta-val" id="r-pos">—</div><div class="meta-key">Позиція в черзі</div></div>
+        <div class="meta-item"><div class="meta-val" id="r-wait">—</div><div class="meta-key">Очікування (хв)</div></div>
+      </div>
+    </div>
+    <button class="back-btn" onclick="reset()">← Нова заявка</button>
+  </div>
+</div>
+
+<script>
+let selectedService = null;
+let selectedPriority = 1;
+let serviceNames = { {% for s in services %}'{{ s.service_id }}': '{{ s.name }}',{% endfor %} };
+
+function selectService(id, btn) {
+  selectedService = id;
+  document.querySelectorAll('.service-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  document.getElementById('get-btn').disabled = false;
+}
+
+function selectPriority(val, btn) {
+  selectedPriority = val;
+  document.querySelectorAll('.prio-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+async function getTicket() {
+  const name = document.getElementById('cust-name').value;
+  const btn = document.getElementById('get-btn');
+  btn.disabled = true; btn.textContent = 'Оформлення...';
+  const res = await fetch('/api/tickets', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({service_type: selectedService, customer_name: name||null, priority: selectedPriority})
+  });
+  const data = await res.json();
+  if (data.ok) {
+    document.getElementById('r-number').textContent = '#' + data.ticket.number;
+    document.getElementById('r-service').textContent = serviceNames[selectedService] || selectedService;
+    document.getElementById('r-pos').textContent = data.ticket.position || 1;
+    document.getElementById('r-wait').textContent = data.ticket.estimated_wait_minutes || 0;
+    document.getElementById('form-screen').style.display = 'none';
+    const rs = document.getElementById('result-screen');
+    rs.style.display = 'block';
+  }
+  btn.disabled = false; btn.textContent = 'Отримати талон';
+}
+
+function reset() {
+  selectedService = null; selectedPriority = 1;
+  document.querySelectorAll('.service-btn').forEach(b => b.classList.remove('selected'));
+  document.querySelectorAll('.prio-btn').forEach((b,i) => b.classList.toggle('selected', i===0));
+  document.getElementById('cust-name').value = '';
+  document.getElementById('get-btn').disabled = true;
+  document.getElementById('form-screen').style.display = 'block';
+  document.getElementById('result-screen').style.display = 'none';
+}
+</script>
+</body>
+</html>

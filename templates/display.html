@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Електронне Табло</title>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#04040c; --surface:#0a0a18; --border:#141424; --accent:#6ee7b7; --accent2:#f59e0b; --text:#f1f5f9; --muted:#334155; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:var(--bg); color:var(--text); font-family:'JetBrains Mono',monospace; min-height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+    body::before { content:''; position:fixed; inset:0; background:radial-gradient(ellipse 60% 40% at 50% 100%, rgba(110,231,183,.05) 0%, transparent 70%); pointer-events:none; }
+
+    header { text-align:center; padding:32px 24px 20px; border-bottom:1px solid var(--border); position:relative; }
+    .display-title { font-family:'Unbounded',sans-serif; font-size:28px; font-weight:900; color:var(--accent); letter-spacing:-.02em; }
+    .clock { position:absolute; right:32px; top:50%; transform:translateY(-50%); font-size:32px; font-weight:600; color:var(--accent2); font-family:'Unbounded',sans-serif; }
+
+    .board { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:0; }
+    .section { padding:32px; border-right:1px solid var(--border); }
+    .section:last-child { border-right:none; }
+    .section-title { font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); margin-bottom:24px; border-bottom:1px solid var(--border); padding-bottom:12px; }
+
+    .ticket-row {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:16px 20px; border-radius:10px; margin-bottom:12px;
+      animation:slideIn .4s ease;
+    }
+    @keyframes slideIn { from { opacity:0; transform:translateX(-16px); } to { opacity:1; transform:translateX(0); } }
+    .ticket-row.called { background:rgba(110,231,183,.08); border:1px solid rgba(110,231,183,.2); }
+    .ticket-row.serving { background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.2); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.7; } }
+
+    .t-number { font-family:'Unbounded',sans-serif; font-size:48px; font-weight:900; color:var(--accent); line-height:1; }
+    .t-number.serving { color:var(--accent2); }
+    .t-window { text-align:right; }
+    .t-window-name { font-size:18px; font-weight:600; color:var(--text); }
+    .t-window-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-top:4px; }
+    .t-service { font-size:12px; color:var(--muted); margin-top:4px; }
+
+    .empty-msg { color:var(--muted); font-size:14px; text-align:center; margin-top:48px; }
+
+    footer { text-align:center; padding:16px; border-top:1px solid var(--border); color:var(--muted); font-size:11px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="display-title">Електронне Табло</div>
+    <div class="clock" id="clock">00:00:00</div>
+  </header>
+  <div class="board">
+    <div class="section">
+      <div class="section-title">🔔 Запрошуємо до вікна</div>
+      <div id="called-list">
+        {% for t in called %}
+        <div class="ticket-row called">
+          <div><div class="t-number">#{{ t.number }}</div><div class="t-service">{{ t.service_type }}</div></div>
+          <div class="t-window"><div class="t-window-name">{{ t.window_id or 'Вікно' }}</div><div class="t-window-label">Підійдіть</div></div>
+        </div>
+        {% else %}
+        <div class="empty-msg">Наразі немає викликів</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">⚙️ Зараз обслуговуються</div>
+      <div id="serving-list">
+        {% for t in serving %}
+        <div class="ticket-row serving">
+          <div><div class="t-number serving">#{{ t.number }}</div><div class="t-service">{{ t.service_type }}</div></div>
+          <div class="t-window"><div class="t-window-name">{{ t.window_id or 'Вікно' }}</div><div class="t-window-label">Обслуговується</div></div>
+        </div>
+        {% else %}
+        <div class="empty-msg">Наразі нікого</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <footer>Оновлення кожні 5 секунд · Електронна черга</footer>
+
+<script>
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('uk-UA');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+async function refreshDisplay() {
+  const [calledRes, servingRes] = await Promise.all([
+    fetch('/api/tickets?status=called').then(r=>r.json()),
+    fetch('/api/tickets?status=serving').then(r=>r.json()),
+  ]);
+  const winRes = await fetch('/api/windows').then(r=>r.json());
+  const winMap = {};
+  if (winRes.ok) winRes.windows.forEach(w => winMap[w.window_id] = w.name);
+
+  function render(tickets, cls) {
+    if (!tickets.length) return '<div class="empty-msg">Наразі немає</div>';
+    return tickets.map(t => `
+      <div class="ticket-row ${cls}">
+        <div><div class="t-number ${cls==='serving'?'serving':''}">#${t.number}</div><div class="t-service">${t.service_type}</div></div>
+        <div class="t-window"><div class="t-window-name">${winMap[t.window_id]||'Вікно'}</div><div class="t-window-label">${cls==='called'?'Підійдіть':'Обслуговується'}</div></div>
+      </div>`).join('');
+  }
+  if (calledRes.ok) document.getElementById('called-list').innerHTML = render(calledRes.tickets, 'called');
+  if (servingRes.ok) document.getElementById('serving-list').innerHTML = render(servingRes.tickets, 'serving');
+}
+
+setInterval(refreshDisplay, 5000);
+</script>
+</body>
+</html>
